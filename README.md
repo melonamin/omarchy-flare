@@ -154,6 +154,26 @@ That bounds the unread backlog at 200 writes (~5.2 KB) against a measured 64 KB
 (2,500 writes) before a write would block — a 12x margin. On fallback Lua retries
 the FIFO every 20 events, so a shell restart heals itself.
 
+## Screen sharing
+
+Share the **whole screen**, not a window or a browser tab. Flare draws on its
+own layer-shell surface, and only a full-output capture composites that in:
+
+| What you share | Capture path | Flare visible |
+|---|---|---|
+| Entire screen / output | `zwlr_screencopy` over the composited output | yes |
+| A single window | `hyprland_toplevel_export`, that window's own buffer | **no** |
+| A browser tab | the browser renders the tab itself, no compositor involved | **no** |
+
+This is how Wayland works rather than something the plugin can fix: one client
+cannot draw into another client's buffer, so a window share can only ever
+contain that window. Meet, Zoom, Discord and OBS window-capture all behave the
+same way.
+
+Screenshots are a different story -- a "window" screenshot from
+`omarchy-capture-screenshot windows` is a *region of the output*, so Flare does
+appear in those.
+
 ## Known limits
 
 - **Pointer-locked clients** (games, some remote-desktop apps) grab the pointer,
