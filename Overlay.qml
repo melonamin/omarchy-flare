@@ -25,10 +25,12 @@ PanelWindow {
   // reaching the window underneath.
   mask: Region {}
 
-  // Stay unmapped while idle so an always-on fullscreen overlay never blocks
-  // the compositor from handing a fullscreen client direct scanout.
-  property int liveCount: 0
-  visible: liveCount > 0
+  // Mapped for as long as the plugin is loaded. Mapping on demand -- flipping
+  // `visible` when a pulse starts -- reads as tidier and even reports
+  // `visible == true`, but the layer surface is then never created and nothing
+  // is drawn. The surface is transparent and input-transparent, so leaving it
+  // up costs a compositor pass, not a visible window.
+  visible: true
 
   // Spawn a pulse for a click at global layout coordinates, if it lands
   // anywhere on this screen's slice of the layout.
@@ -54,7 +56,6 @@ PanelWindow {
 
     pulse.x = localX - pulse.side / 2
     pulse.y = localY - pulse.side / 2
-    win.liveCount++
   }
 
   Item {
@@ -66,10 +67,7 @@ PanelWindow {
     id: pulseComponent
 
     Pulse {
-      onFinished: {
-        win.liveCount--
-        destroy()
-      }
+      onFinished: destroy()
     }
   }
 }

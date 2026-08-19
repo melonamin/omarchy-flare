@@ -92,28 +92,22 @@ Item {
       return
     }
     shell.mutateShellConfig(function(config) {
+      var entry = root.findEntry(config)
+      if (entry) { entry[key] = value; return }
       if (!Array.isArray(config.plugins)) config.plugins = []
-      for (var i = 0; i < config.plugins.length; i++) {
-        if (config.plugins[i] && config.plugins[i].id === root.pluginId) {
-          config.plugins[i][key] = value
-          return
-        }
-      }
-      var entry = { id: root.pluginId }
-      entry[key] = value
-      config.plugins.push(entry)
+      var created = { id: root.pluginId }
+      created[key] = value
+      config.plugins.push(created)
     })
   }
 
   function reset() {
     if (!shell || typeof shell.mutateShellConfig !== "function") return
     shell.mutateShellConfig(function(config) {
-      if (!Array.isArray(config.plugins)) return
-      for (var i = 0; i < config.plugins.length; i++) {
-        if (config.plugins[i] && config.plugins[i].id === root.pluginId) {
-          config.plugins[i] = { id: root.pluginId }
-          return
-        }
+      var entry = root.findEntry(config)
+      if (!entry) return
+      for (var key in entry) {
+        if (key !== "id") delete entry[key]
       }
     })
   }
@@ -128,6 +122,32 @@ Item {
     onLoadFailed: root.settings = FlareModel.settingsFrom(null)
   }
 
+  // A plugin that is a service, a panel and a bar widget at once can be
+  // recorded in either place: enabling a bar widget files it under
+  // bar.layout.<section>, while non-bar kinds live in plugins[]. Read both, and
+  // let the bar entry win -- that is the one `omarchy bar set` edits.
+  function isPlainObject(value) {
+    return value !== null && typeof value === "object" && !Array.isArray(value)
+  }
+
+  function findEntry(parsed) {
+    var layout = parsed && parsed.bar ? parsed.bar.layout : null
+    if (isPlainObject(layout)) {
+      for (var section in layout) {
+        var items = layout[section]
+        if (!Array.isArray(items)) continue
+        for (var i = 0; i < items.length; i++) {
+          if (items[i] && items[i].id === root.pluginId) return items[i]
+        }
+      }
+    }
+    var entries = parsed && Array.isArray(parsed.plugins) ? parsed.plugins : []
+    for (var j = 0; j < entries.length; j++) {
+      if (entries[j] && entries[j].id === root.pluginId) return entries[j]
+    }
+    return null
+  }
+
   function applyConfig(raw) {
     var parsed
     try {
@@ -136,16 +156,7 @@ Item {
       console.warn("flare: could not parse shell.json:", error)
       return
     }
-
-    var entries = Array.isArray(parsed.plugins) ? parsed.plugins : []
-    for (var i = 0; i < entries.length; i++) {
-      var entry = entries[i]
-      if (entry && entry.id === root.pluginId) {
-        root.settings = FlareModel.settingsFrom(entry)
-        return
-      }
-    }
-    root.settings = FlareModel.settingsFrom(null)
+    root.settings = FlareModel.settingsFrom(findEntry(parsed))
   }
 
   // ------------------------------------------------------- compositor half

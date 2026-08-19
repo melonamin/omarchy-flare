@@ -58,9 +58,25 @@ function clamp(value, low, high) {
   return Math.max(low, Math.min(high, value))
 }
 
+// `omarchy bar set` writes every value as a string unless --json is used, so
+// "120" has to mean 120 here or a perfectly good setting silently reverts.
 function numberOr(value, legacy, fallback, low, high) {
   if (typeof value === "number" && !isNaN(value)) return clamp(value, low, high)
-  if (typeof value === "string" && legacy[value] !== undefined) return legacy[value]
+  if (typeof value === "string") {
+    if (legacy[value] !== undefined) return legacy[value]
+    var parsed = parseFloat(value)
+    if (!isNaN(parsed)) return clamp(parsed, low, high)
+  }
+  return fallback
+}
+
+// Same reason: "false" arrives as a string and must not read as true.
+function boolOr(value, fallback) {
+  if (typeof value === "boolean") return value
+  if (typeof value === "string") {
+    if (value === "true") return true
+    if (value === "false") return false
+  }
   return fallback
 }
 
@@ -74,8 +90,8 @@ function settingsFrom(entry) {
   for (var key in DEFAULTS) out[key] = DEFAULTS[key]
   if (!entry || typeof entry !== "object") return out
 
-  if (entry.enabled !== undefined) out.enabled = entry.enabled !== false
-  if (entry.releases !== undefined) out.releases = entry.releases === true
+  if (entry.enabled !== undefined) out.enabled = boolOr(entry.enabled, DEFAULTS.enabled)
+  if (entry.releases !== undefined) out.releases = boolOr(entry.releases, DEFAULTS.releases)
   if (typeof entry.tint === "string" && TINTS[entry.tint] !== undefined) out.tint = entry.tint
 
   out.size = numberOr(entry.size, LEGACY_SIZES, DEFAULTS.size, SIZE_MIN, SIZE_MAX)
