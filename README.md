@@ -11,6 +11,9 @@ no client may observe input it does not have focus for — so the compositor doe
 the observing instead:
 
 ```
+                    ┌─ loads hypr/flare.lua via `hyprctl eval` at startup,
+                    │  and again whenever Hyprland reloads its config
+                    ▼
 click ──▶ Hyprland non-consuming mouse bind  (hypr/flare.lua)
              │  reads hl.get_cursor_pos() in-process
              ▼
@@ -18,8 +21,8 @@ click ──▶ Hyprland non-consuming mouse bind  (hypr/flare.lua)
              │
              ▼
           Service.qml    state, settings, transport, master switch
-             ├─▶ Flare.qml      one click-through overlay per display
-             └─▶ BarWidget.qml  bar toggle
+             ├─▶ Flare.qml         one click-through overlay per display
+             └─▶ SettingsPanel.qml bar button and settings popup
 ```
 
 The plugin declares three kinds. `Service.qml` is the headless singleton the
@@ -37,22 +40,24 @@ surface never stops the compositor handing a fullscreen client direct scanout.
 
 ## Install
 
-Flare has two halves: a Quickshell plugin and a set of Hyprland mouse binds.
-The Omarchy plugin installer deliberately never runs hooks or touches your
-Hyprland config, so the compositor half is wired up by a script.
-
 ```bash
 omarchy plugin add https://github.com/melonamin/omarchy-flare.git
 ~/.config/omarchy/plugins/melonamin.flare/install.sh
 ```
 
-`omarchy plugin add` clones and enables the plugin. `install.sh` then installs
-`~/.config/hypr/flare.lua`, appends `require("hypr.flare")` to your
-`~/.config/hypr/hyprland.lua` (backing it up first), places the bar widget, and
-reloads Hyprland.
+The second line enables the plugin and puts its widget on the bar -- the two
+things `omarchy plugin add` cannot do for a plugin that is a service, a panel,
+and a bar widget at once.
 
-Running `./install.sh` from a clone anywhere else does the whole job, linking
-that checkout into `~/.config/omarchy/plugins/melonamin.flare`.
+Nothing outside `~/.config/omarchy` is written. Flare needs mouse binds inside
+Hyprland, but rather than have you paste a `require` into `hyprland.lua`, the
+plugin loads its own Lua with `hyprctl eval` when the shell starts, and again
+whenever Hyprland reloads its config (a reload drops every bind). Remove the
+plugin and nothing is left behind in your compositor config; the binds go on
+the next reload.
+
+Running `./install.sh` from a clone anywhere else works too, linking that
+checkout into `~/.config/omarchy/plugins/melonamin.flare`.
 
 ## Settings
 
@@ -166,3 +171,14 @@ of one-shots retired by a generation counter. If anything ever does get stuck,
 After editing the QML, `omarchy-shell shell rescanPlugins` usually suffices; a
 `keepLoaded` panel sometimes keeps the old instance, in which case
 `omarchy restart shell` picks up the change.
+
+If clicks are not highlighting, check both halves:
+
+```bash
+omarchy-shell flare status              # "binds":true means the Lua loaded
+hyprctl binds | grep -cE '^bindn|^bindrn'   # 6 = three buttons, press+release
+```
+
+`viaFifo` climbing as you click means events are arriving; `counts` staying
+empty while it climbs means they are arriving but being filtered -- the master
+switch is off, or that button is set to `none`.
