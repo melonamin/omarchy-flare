@@ -5,8 +5,18 @@
 -- Hyprland runs the dispatcher *and* delivers the click to the window under
 -- the pointer, so highlighting never costs you a click.
 --
--- Load it from ~/.config/hypr/hyprland.lua with:
---   require("hypr.flare")
+-- The shell plugin loads this itself with `hyprctl eval`, at startup and again
+-- whenever Hyprland reloads its config (a reload drops every bind). Nothing
+-- needs to be added to hyprland.lua.
+
+-- Loading twice must not stack a second set of binds on the first. Do NOT try
+-- to unbind the previous handles to achieve that: after a config reload
+-- Hyprland has already freed the keybinds those handles point at, and calling
+-- :unbind() on one takes the whole compositor down. pcall cannot catch a
+-- crash in C++. Guard with a flag instead, and let the caller clear it when
+-- it knows the binds are gone.
+if _G.__flare_loaded then return end
+_G.__flare_loaded = true
 
 local BUTTONS = {
   { key = "mouse:272", name = "primary" },
@@ -162,6 +172,9 @@ local function endDrag()
   generation = generation + 1
 end
 
+-- Left without a description on purpose: omarchy's keybindings menu lists
+-- every described bind, and six entries for something with no key to press
+-- would be noise.
 for _, button in ipairs(BUTTONS) do
   hl.bind(button.key, function() beginDrag(emit(button.name .. "-press")) end,
     { mouse = true, non_consuming = true })

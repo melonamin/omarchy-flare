@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Hyprland
 import qs.Commons
 import "FlareModel.js" as FlareModel
 
@@ -147,6 +148,55 @@ Item {
     root.settings = FlareModel.settingsFrom(null)
   }
 
+  // ------------------------------------------------------- compositor half
+
+  // Wayland lets no client observe input it does not have focus for, so the
+  // binds have to live in Hyprland. Rather than have the user paste a require
+  // into hyprland.lua, the plugin loads its own Lua through `hyprctl eval`.
+  // Nothing outside this directory is ever written.
+  readonly property string sourceDir: manifest && manifest.__sourceDir ? manifest.__sourceDir : ""
+  readonly property string luaPath: sourceDir ? sourceDir + "/hypr/flare.lua" : ""
+
+  property bool bindsInstalled: false
+
+  function installBinds() {
+    if (!luaPath) {
+      console.warn("flare: no plugin source dir; cannot install the Hyprland binds")
+      return
+    }
+    if (binder.running) return
+    binder.command = ["hyprctl", "eval", "dofile('" + luaPath.replace(/'/g, "\\'") + "')"]
+    binder.running = true
+  }
+
+  Process {
+    id: binder
+    onExited: function(code) {
+      root.bindsInstalled = (code === 0)
+      if (code !== 0) console.warn("flare: hyprctl eval failed with", code)
+    }
+  }
+
+  // Not Component.onCompleted: the service loader assigns `manifest` after
+  // construction, so the source dir is still empty at that point.
+  onLuaPathChanged: if (luaPath) installBinds()
+
+  // A config reload drops every bind Hyprland holds, including ours, and Lua
+  // event handlers registered by the eval do not survive it either -- so the
+  // shell, which does survive, is what puts them back.
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      if (event.name === "configreloaded") reinstall.restart()
+    }
+  }
+
+  Timer {
+    id: reinstall
+    interval: 400
+    onTriggered: root.installBinds()
+  }
+
   // ---------------------------------------------------------- transport
 
   // The Hyprland binds prefer a FIFO over shelling out per event. Draining it
@@ -244,6 +294,7 @@ Item {
           middle: root.settings.middle, drag: root.settings.drag
         },
         tint: String(root.tint),
+        binds: root.bindsInstalled,
         viaFifo: root.consumed,
         viaIpc: root.viaIpc,
         counts: root.counts
