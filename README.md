@@ -26,13 +26,11 @@ intercepts a click.
 ## Install
 
 ```bash
-omarchy plugin add https://github.com/melonamin/omarchy-flare.git
-~/.config/omarchy/plugins/melonamin.flare/install.sh
+omarchy plugin add https://github.com/melonamin/omarchy-flare.git --enable
 ```
 
-The second line enables the plugin and places the bar widget — the two things
-`omarchy plugin add` does not do for a plugin that is a service, a panel, and a
-bar widget at once.
+That is the whole install. The shell picks the plugin up without a restart and
+puts the widget on your bar.
 
 To remove:
 
@@ -42,10 +40,10 @@ hyprctl reload      # drops the mouse binds
 ```
 
 Nothing is written outside `~/.config/omarchy`. Flare needs mouse binds inside
-Hyprland, but rather than have you paste a `require` into `hyprland.lua`, the
-plugin loads its own Lua through `hyprctl eval` when the shell starts and again
-whenever Hyprland reloads. Remove the plugin and your compositor config is
-untouched.
+Hyprland to see clicks it does not have focus for, but rather than have you
+paste a `require` into `hyprland.lua`, the plugin loads its own Lua through
+`hyprctl eval` when the shell starts and again whenever Hyprland reloads.
+Remove the plugin and your compositor config is untouched.
 
 ## Screen sharing
 
