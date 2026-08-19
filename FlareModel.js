@@ -219,3 +219,23 @@ function lightened(color, fraction) {
 function titleCase(text) {
   return String(text).charAt(0).toUpperCase() + String(text).slice(1)
 }
+
+// Exported for the node test suite. QML imports this file directly and never
+// sees `module`, so the guard keeps both consumers happy.
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    BUTTONS: BUTTONS, BUTTON_LABELS: BUTTON_LABELS,
+    SHAPES: SHAPES, SHAPE_OPTIONS: SHAPE_OPTIONS, KINDS: KINDS,
+    TINTS: TINTS, TINT_OPTIONS: TINT_OPTIONS, DEFAULTS: DEFAULTS,
+    SIZE_MIN: SIZE_MIN, SIZE_MAX: SIZE_MAX,
+    SPEED_MIN: SPEED_MIN, SPEED_MAX: SPEED_MAX,
+    INTENSITY_MIN: INTENSITY_MIN, INTENSITY_MAX: INTENSITY_MAX,
+    settingsFrom: settingsFrom, shapeForKind: shapeForKind, buttonOf: buttonOf,
+    isPress: isPress, isRelease: isRelease,
+    hasCrosshair: hasCrosshair, crosshairRotation: crosshairRotation,
+    strokeFor: strokeFor, showsGlow: showsGlow,
+    lifetimeFor: lifetimeFor, containerFor: containerFor,
+    outline: outline, polygon: polygon, star: star,
+    lightened: lightened, titleCase: titleCase
+  }
+}
