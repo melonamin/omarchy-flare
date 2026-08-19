@@ -159,13 +159,15 @@ Item {
 
   property bool bindsInstalled: false
 
-  function installBinds() {
+  function installBinds(force) {
     if (!luaPath) {
       console.warn("flare: no plugin source dir; cannot install the Hyprland binds")
       return
     }
     if (binder.running) return
-    binder.command = ["hyprctl", "eval", "dofile('" + luaPath.replace(/'/g, "\\'") + "')"]
+    var quoted = "dofile('" + luaPath.replace(/'/g, "\\'") + "')"
+    binder.command = ["hyprctl", "eval",
+      force ? "_G.__flare_loaded = nil; " + quoted : quoted]
     binder.running = true
   }
 
@@ -194,7 +196,9 @@ Item {
   Timer {
     id: reinstall
     interval: 400
-    onTriggered: root.installBinds()
+    // A reload wiped the binds, so the "already loaded" guard inside the Lua
+    // has to be cleared before it will register them again.
+    onTriggered: root.installBinds(true)
   }
 
   // ---------------------------------------------------------- transport
