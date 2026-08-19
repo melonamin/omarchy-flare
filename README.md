@@ -2,8 +2,8 @@
 
 Draw an animated highlight wherever you click, so an audience can see *when*
 and *where* the pointer went during a demo, screen share, or recording. Lives
-in the Omarchy bar. Port of the macOS app
-[Flare](https://github.com/amebalabs/Flare) — same pulse geometry and presets.
+in the Omarchy bar, draws over everything on every display, and never
+intercepts a click.
 
 ![The Flare settings panel](preview.png)
 
@@ -86,8 +86,7 @@ and a reset button. Everything writes to this plugin's entry in
 | `tint` | `auto`, `blue`, `purple`, `pink`, `red`, `orange`, `yellow`, `green`, `graphite` | `auto` |
 
 Setting a button to `none` switches it off; there is no separate enable flag
-per interaction. Preset values match the macOS build — see `FlareModel.js`,
-ported from its `Presets.swift` and `PulseFactory.swift`.
+per interaction. All the presets and pulse geometry live in `FlareModel.js`.
 
 ## IPC
 
