@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "melonamin.flare",
+  "name": "Flare",
+  "version": "0.3.0",
+  "author": "melonamin",
+  "description": "Animated click highlights drawn over everything, for demos and screen recordings.",
+  "kinds": [
+    "service",
+    "panel",
+    "bar-widget"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml",
+    "panel": "Flare.qml",
+    "barWidget": "SettingsPanel.qml"
+  },
+  "barWidget": {
+    "displayName": "Flare",
+    "description": "Toggle click highlighting and tune its look",
+    "category": "Utilities",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
