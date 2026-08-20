@@ -45,6 +45,19 @@ paste a `require` into `hyprland.lua`, the plugin loads its own Lua through
 `hyprctl eval` when the shell starts and again whenever Hyprland reloads.
 Remove the plugin and your compositor config is untouched.
 
+## Presentation mode
+
+`SUPER + SHIFT + P` (also in the `SUPER + K` cheatsheet) puts a surface over
+the screen that swallows every click. Clicks still highlight, but nothing
+underneath reacts -- point at things without opening them. A badge across the
+top says how to get out; `Esc` or the same shortcut ends it.
+
+Rebind or disable it with the `shortcut` setting; an empty string registers
+nothing.
+
+While presenting, *everything* is swallowed -- including the bar and Flare's
+own widget -- so `Esc` is the way back.
+
 ## Screen sharing
 
 **Share the whole screen, not a window or a browser tab.**
@@ -81,6 +94,7 @@ and a reset button. Everything writes to this plugin's entry in
 | `size` | 32–160, peak ring diameter in px | `64` |
 | `speed` | 0.16–1.20, pulse lifetime in seconds | `0.48` |
 | `intensity` | 0.20–1.40; the soft glow appears at 0.70 and above | `1.0` |
+| `shortcut` | keybind for presentation mode; `""` disables | `SUPER + SHIFT + P` |
 | `tint` | `auto`, `blue`, `purple`, `pink`, `red`, `orange`, `yellow`, `green`, `graphite` | `auto` |
 
 Setting a button to `none` switches it off; there is no separate enable flag

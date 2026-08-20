@@ -24,10 +24,9 @@ Item {
 
   property var settings: FlareModel.settingsFrom(null)
 
-  // Session-scoped master switch. `enabled` in shell.json is the persisted
-  // default; this is the runtime override the toggle flips.
-  property bool runtimeEnabled: true
-  readonly property bool active: runtimeEnabled && settings.enabled !== false
+  // Master switch. Persisted as `enabled` on this plugin's shell.json entry,
+  // so it survives a shell restart.
+  readonly property bool active: settings.enabled !== false
 
   // "auto" follows the current Omarchy theme accent, the way the macOS build
   // follows the system accent color.
@@ -55,10 +54,22 @@ Item {
   // actually live the way the macOS build's status line does (§5.4).
   property var counts: ({})
 
+  // Presentation mode: clicks still highlight, but Hyprland stops forwarding
+  // them, so nothing underneath reacts. Deliberately not persisted -- it is a
+  // mode you are in, not a preference, and a restart should never leave you
+  // unable to click.
+  property bool presenting: false
+
   function toggle() {
     var next = !active
-    runtimeEnabled = true
-    write("enabled", next)
+    if (!write("enabled", next)) return active
+    // Flip the local copy too: `settings` otherwise only updates after the
+    // shell.json round trip, so a second toggle inside that window would read
+    // this one's stale state and undo it. The reload confirms the same value.
+    var updated = {}
+    for (var key in settings) updated[key] = settings[key]
+    updated.enabled = next
+    settings = updated
     return next
   }
 
@@ -85,30 +96,23 @@ Item {
 
   // Settings live inline on this plugin's entry in shell.json, which the shell
   // owns; going through its mutator keeps writes atomic and picked up by the
-  // same reload path a hand edit would take.
+  // same reload path a hand edit would take. Returns whether the write was
+  // handed off, so callers do not report a change that never happened.
   function write(key, value) {
     if (!shell || typeof shell.mutateShellConfig !== "function") {
       console.warn("flare: no shell config mutator available")
-      return
+      return false
     }
     shell.mutateShellConfig(function(config) {
-      var entry = root.findEntry(config)
-      if (entry) { entry[key] = value; return }
-      if (!Array.isArray(config.plugins)) config.plugins = []
-      var created = { id: root.pluginId }
-      created[key] = value
-      config.plugins.push(created)
+      FlareModel.writeEntry(config, root.pluginId, key, value)
     })
+    return true
   }
 
   function reset() {
     if (!shell || typeof shell.mutateShellConfig !== "function") return
     shell.mutateShellConfig(function(config) {
-      var entry = root.findEntry(config)
-      if (!entry) return
-      for (var key in entry) {
-        if (key !== "id") delete entry[key]
-      }
+      FlareModel.resetEntries(config, root.pluginId)
     })
   }
 
@@ -122,30 +126,11 @@ Item {
     onLoadFailed: root.settings = FlareModel.settingsFrom(null)
   }
 
-  // A plugin that is a service, a panel and a bar widget at once can be
-  // recorded in either place: enabling a bar widget files it under
-  // bar.layout.<section>, while non-bar kinds live in plugins[]. Read both, and
-  // let the bar entry win -- that is the one `omarchy bar set` edits.
-  function isPlainObject(value) {
-    return value !== null && typeof value === "object" && !Array.isArray(value)
-  }
-
+  // Entry lookup lives in FlareModel so the node suite can cover it; the
+  // model file documents how bar and plugins[] entries interact.
   function findEntry(parsed) {
-    var layout = parsed && parsed.bar ? parsed.bar.layout : null
-    if (isPlainObject(layout)) {
-      for (var section in layout) {
-        var items = layout[section]
-        if (!Array.isArray(items)) continue
-        for (var i = 0; i < items.length; i++) {
-          if (items[i] && items[i].id === root.pluginId) return items[i]
-        }
-      }
-    }
-    var entries = parsed && Array.isArray(parsed.plugins) ? parsed.plugins : []
-    for (var j = 0; j < entries.length; j++) {
-      if (entries[j] && entries[j].id === root.pluginId) return entries[j]
-    }
-    return null
+    var all = FlareModel.findEntries(parsed, root.pluginId)
+    return all.length > 0 ? all[0] : null
   }
 
   function applyConfig(raw) {
@@ -170,23 +155,50 @@ Item {
 
   property bool bindsInstalled: false
 
-  function installBinds(force) {
+  function installBinds(afterReload) {
     if (!luaPath) {
       console.warn("flare: no plugin source dir; cannot install the Hyprland binds")
       return
     }
-    if (binder.running) return
-    var quoted = "dofile('" + luaPath.replace(/'/g, "\\'") + "')"
+    // A request that lands while an eval is in flight is queued, not dropped:
+    // it means a reload just wiped whatever the running eval installed.
+    if (binder.running) {
+      binder.queued = true
+      if (afterReload) binder.queuedStale = true
+      return
+    }
+    // Loading the file only defines things; install() registers the binds and
+    // is guarded, so re-running it is safe.
     binder.command = ["hyprctl", "eval",
-      force ? "_G.__flare_loaded = nil; " + quoted : quoted]
+      "dofile('" + luaPath.replace(/'/g, "\\'") + "'); "
+      + "flare.install('" + String(settings.shortcut).replace(/'/g, "") + "', "
+      + (afterReload ? "true" : "false") + ")"]
     binder.running = true
   }
 
+  // Nothing compositor-side changes: the binds stay exactly as they are and an
+  // input-accepting surface goes on top instead.
+  function setPresenting(on) {
+    presenting = on
+  }
+
+  function togglePresenting() { setPresenting(!presenting) }
+
   Process {
     id: binder
+    property bool queued: false
+    // Carried through the queue: a reload landing mid-eval is exactly the case
+    // where the handles the next run would unbind are already freed.
+    property bool queuedStale: false
     onExited: function(code) {
       root.bindsInstalled = (code === 0)
       if (code !== 0) console.warn("flare: hyprctl eval failed with", code)
+      if (queued) {
+        queued = false
+        var stale = queuedStale
+        queuedStale = false
+        root.installBinds(stale)
+      }
     }
   }
 
@@ -217,9 +229,14 @@ Item {
   // The Hyprland binds prefer a FIFO over shelling out per event. Draining it
   // here costs one persistent `cat` instead of a `qs ipc` startup per pulse,
   // which is what makes a 30 Hz drag trail affordable.
-  readonly property string runtimeDir: Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"
-  readonly property string fifoPath: runtimeDir + "/flare.fifo"
-  readonly property string ackPath: runtimeDir + "/flare.ack"
+  //
+  // The FIFO lives in XDG_RUNTIME_DIR because that directory is private to
+  // this user. With it unset the only candidates are world-writable, where
+  // anyone could pre-create the paths, so the fast path is skipped entirely
+  // and every event arrives through IPC instead.
+  readonly property string runtimeDir: Quickshell.env("XDG_RUNTIME_DIR") || ""
+  readonly property string fifoPath: runtimeDir ? runtimeDir + "/flare.fifo" : ""
+  readonly property string ackPath: runtimeDir ? runtimeDir + "/flare.ack" : ""
 
   // Counted per transport rather than inferred by subtraction: `consumed`
   // ticks before emit() decides whether to draw, so a difference against the
@@ -228,47 +245,97 @@ Item {
   property int viaIpc: 0
 
   Process {
-    running: true
+    id: reader
+    property bool retiring: false
+    running: root.fifoPath !== ""
     // Hold a write end open on fd 3 as well as reading it, so `cat` never
     // sees EOF when the Lua side closes and reopens. Looping `cat` instead
     // drops whatever is written during the reopen gap.
+    //
+    // Bail out unless the path really is a FIFO: mkfifo fails silently when
+    // something else already sits there, and reading a regular file would
+    // deliver its contents as events. The path rides in as a positional
+    // argument rather than being spliced into the script, so no character in
+    // it can escape the quoting.
     command: ["sh", "-c",
-      "mkfifo -m 600 '" + root.fifoPath + "' 2>/dev/null; " +
-      "exec 3<> '" + root.fifoPath + "'; exec cat <&3"]
+      'mkfifo -m 600 "$1" 2>/dev/null; ' +
+      '[ -p "$1" ] || exit 1; ' +
+      'exec 3<> "$1"; exec cat <&3',
+      "flare-fifo", root.fifoPath]
 
     stdout: SplitParser {
-      onRead: line => root.consume(line)
+      onRead: line => root.route(line, true)
+    }
+
+    // The `running` binding points at a value that never changes, so a
+    // one-shot failure (mkfifo race, something else squatting on the path)
+    // would otherwise kill the fast path until a shell restart. Say why, and
+    // keep retrying so removing the obstruction is enough to recover.
+    onExited: function(code) {
+      if (retiring) return
+      console.warn("flare: FIFO reader exited with", code,
+        "- is something other than a FIFO at " + root.fifoPath + "?")
+      readerRetry.restart()
     }
 
     // Every plugin reload builds a fresh Service. Without this the previous
     // reader survives as an orphan and competes with the new one for the same
-    // FIFO, so events go missing at random.
-    Component.onDestruction: running = false
+    // FIFO, so events go missing at random. `retiring` keeps that deliberate
+    // stop from logging and scheduling a retry on a dying object.
+    Component.onDestruction: { retiring = true; running = false }
   }
 
-  function consume(line) {
-    var parts = String(line).trim().split(/\s+/)
+  Timer {
+    id: readerRetry
+    interval: 5000
+    // Doubling toward a minute keeps a persistent obstruction from turning
+    // into a warning every five seconds for the rest of the session.
+    onTriggered: {
+      interval = Math.min(interval * 2, 60000)
+      reader.running = true
+    }
+  }
+
+  // Routes one line from either transport; `viaFifoTransport` picks which
+  // tally a pulse lands in, so the status counters keep telling the transports
+  // apart. Control messages belong to neither tally.
+  function route(line, viaFifoTransport) {
+    var text = String(line).trim()
+
+    // Control messages from the Lua binds, distinguished from pulses by a
+    // leading "!" so they can never be mistaken for an interaction name.
+    if (text.charAt(0) === "!") {
+      if (text === "!toggle") togglePresenting()
+      else if (text === "!exit") setPresenting(false)
+      return
+    }
+
+    var parts = text.split(/\s+/)
     if (parts.length !== 3) return
     var px = parseFloat(parts[1])
     var py = parseFloat(parts[2])
     if (isNaN(px) || isNaN(py)) return
-    consumed++
+    if (viaFifoTransport) consumed++
+    else viaIpc++
     emit(parts[0], px, py)
   }
 
-  // Liveness stamp for the Lua side. It ticks from this event loop, so it
-  // stops the moment the plugin stops draining -- which is exactly when the
-  // compositor must go back to the shell-out path rather than risk blocking
-  // on a full pipe.
+  // Liveness stamp for the Lua side. Gated on the reader process itself, not
+  // just this event loop: a dead reader with a live heartbeat would keep the
+  // compositor writing into a pipe nobody drains -- exactly the blocking the
+  // ack exists to prevent.
   FileView {
     id: ackFile
     path: root.ackPath
+    // Write-only: without this the view preloads the (usually absent) file at
+    // startup and logs a spurious read failure.
+    preload: false
     blockAllReads: true
     atomicWrites: false
   }
 
   Timer {
-    running: true
+    running: root.ackPath !== "" && reader.running
     repeat: true
     interval: 1000
     triggeredOnStart: true
@@ -300,9 +367,24 @@ Item {
       return root.toggle() ? "on" : "off"
     }
 
+    // The Lua fallback path routes everything through here when the FIFO is
+    // unavailable: pulses (tallied as IPC) and control messages alike.
+    function event(line: string): string {
+      root.route(line, false)
+      return "ok"
+    }
+
+    function present(state: string): string {
+      if (state === "on") root.setPresenting(true)
+      else if (state === "off") root.setPresenting(false)
+      else root.togglePresenting()
+      return root.presenting ? "on" : "off"
+    }
+
     function status(): string {
       return JSON.stringify({
         enabled: root.active,
+        presenting: root.presenting,
         size: root.pulseSize,
         shapes: {
           primary: root.settings.primary, secondary: root.settings.secondary,

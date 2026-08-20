@@ -30,4 +30,19 @@ Item {
       appearance: root.appearance
     }
   }
+
+  // Only exists while presenting: created on entry, destroyed on exit. The
+  // pulse overlay above stays click-through throughout -- this is the surface
+  // that stops clicks, and it is separate precisely so nothing has to be
+  // flipped on a live layer-shell surface.
+  Variants {
+    model: root.service && root.service.presenting ? Quickshell.screens : []
+
+    PresentationSurface {
+      // modelData comes from Variants; PresentationSurface already declares it.
+      primary: modelData === Quickshell.screens[0]
+      shortcutLabel: root.service ? root.service.settings.shortcut : ""
+      onExitRequested: if (root.service) root.service.setPresenting(false)
+    }
+  }
 }

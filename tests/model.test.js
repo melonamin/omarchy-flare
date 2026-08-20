@@ -38,6 +38,9 @@ test("boolean strings are honoured, and \"false\" is not truthy", () => {
   assert.equal(M.settingsFrom({ enabled: "true" }).enabled, true)
   assert.equal(M.settingsFrom({ releases: "true" }).releases, true)
   assert.equal(M.settingsFrom({ enabled: false }).enabled, false)
+  // ...and the "1"/"0" spellings people type at a prompt.
+  assert.equal(M.settingsFrom({ enabled: "0" }).enabled, false)
+  assert.equal(M.settingsFrom({ releases: "1" }).releases, true)
 })
 
 test("out-of-range numbers clamp instead of drawing nonsense", () => {
@@ -141,6 +144,61 @@ test("lightening moves toward white and keeps alpha", () => {
   const c = M.lightened({ r: 0.2, g: 0.4, b: 0.6, a: 1 }, 0.5)
   assert.ok(c.r > 0.2 && c.g > 0.4 && c.b > 0.6)
   assert.equal(c.a, 1)
+})
+
+// The shell.json entry helpers back Service.qml's write()/reset(); the ID is
+// arbitrary here because the service passes its own in.
+const ID = "melonamin.flare"
+
+test("entries are found in the bar layout first, then plugins[]", () => {
+  const config = {
+    bar: { layout: { right: [{ id: ID, size: 88 }, { id: "other.widget" }] } },
+    plugins: [{ id: "other.plugin" }, { id: ID, size: 44 }]
+  }
+  const found = M.findEntries(config, ID)
+  assert.equal(found.length, 2)
+  // Bar entry wins reads, so it must come first.
+  assert.equal(found[0].size, 88)
+  assert.equal(found[1].size, 44)
+  assert.deepEqual(M.findEntries({}, ID), [])
+  assert.deepEqual(M.findEntries(null, ID), [])
+  // A malformed layout section is skipped, not crashed on.
+  assert.deepEqual(M.findEntries({ bar: { layout: { right: "junk" } } }, ID), [])
+})
+
+test("a write with no entry creates one under plugins[]", () => {
+  const config = {}
+  M.writeEntry(config, ID, "size", 120)
+  assert.deepEqual(config.plugins, [{ id: ID, size: 120 }])
+})
+
+test("a write fans out to every entry, so no stale copy can shadow it", () => {
+  const bar = { id: ID, size: 88 }
+  const plugin = { id: ID, size: 44 }
+  const config = { bar: { layout: { center: [bar] } }, plugins: [plugin] }
+  M.writeEntry(config, ID, "size", 64)
+  assert.equal(bar.size, 64)
+  assert.equal(plugin.size, 64)
+})
+
+test("a reset clears settings and legacy keys but keeps loader-owned ones", () => {
+  const entry = {
+    id: ID, position: 3,      // loader-owned: must survive
+    size: 88, enabled: false, // settings: must go
+    shape: "star", duration: 0.9 // legacy spellings: must go too
+  }
+  const config = { plugins: [entry] }
+  M.resetEntries(config, ID)
+  assert.deepEqual(entry, { id: ID, position: 3 })
+})
+
+test("every legacy key spelling is one settingsFrom actually reads", () => {
+  // A key in LEGACY_KEYS that settingsFrom ignores is dead weight; one it
+  // reads but reset() misses keeps overriding defaults after a reset.
+  assert.ok(M.LEGACY_KEYS.includes("shape"))
+  assert.ok(M.LEGACY_KEYS.includes("duration"))
+  assert.equal(M.settingsFrom({ duration: 0.9 }).speed, 0.9)
+  assert.equal(M.settingsFrom({ shape: "star" }).primary, "star")
 })
 
 test("every tint option resolves, and auto defers to the theme", () => {

@@ -42,6 +42,8 @@ var DEFAULTS = {
   intensity: 1.00,
   releases: false,
   tint: "auto",
+  // Keybind that toggles presentation mode. Empty string registers nothing.
+  shortcut: "SUPER + SHIFT + P",
   primary: "circle",
   secondary: "square",
   middle: "diamond",
@@ -53,6 +55,12 @@ var DEFAULTS = {
 var LEGACY_SIZES = { compact: 44, regular: 64, large: 88, veryLarge: 116 }
 var LEGACY_SPEEDS = { snappy: 0.28, normal: 0.48, slow: 0.72, verySlow: 1.00 }
 var LEGACY_INTENSITIES = { subtle: 0.28, medium: 0.70, bright: 1.00, beacon: 1.35 }
+
+// Key spellings older entries used, kept beside the aliases settingsFrom
+// honours. A reset must delete these too, or the stale key keeps overriding
+// the default it aliases; add to this list whenever settingsFrom learns a new
+// legacy spelling.
+var LEGACY_KEYS = ["shape", "duration"]
 
 function clamp(value, low, high) {
   return Math.max(low, Math.min(high, value))
@@ -71,11 +79,12 @@ function numberOr(value, legacy, fallback, low, high) {
 }
 
 // Same reason: "false" arrives as a string and must not read as true.
+// "1" and "0" are accepted because that is what people type at a prompt.
 function boolOr(value, fallback) {
   if (typeof value === "boolean") return value
   if (typeof value === "string") {
-    if (value === "true") return true
-    if (value === "false") return false
+    if (value === "true" || value === "1") return true
+    if (value === "false" || value === "0") return false
   }
   return fallback
 }
@@ -93,6 +102,7 @@ function settingsFrom(entry) {
   if (entry.enabled !== undefined) out.enabled = boolOr(entry.enabled, DEFAULTS.enabled)
   if (entry.releases !== undefined) out.releases = boolOr(entry.releases, DEFAULTS.releases)
   if (typeof entry.tint === "string" && TINTS[entry.tint] !== undefined) out.tint = entry.tint
+  if (typeof entry.shortcut === "string") out.shortcut = entry.shortcut
 
   out.size = numberOr(entry.size, LEGACY_SIZES, DEFAULTS.size, SIZE_MIN, SIZE_MAX)
   out.speed = numberOr(entry.speed !== undefined ? entry.speed : entry.duration,
@@ -108,6 +118,62 @@ function settingsFrom(entry) {
     out[button] = shapeOr(entry[button], fallback)
   }
   return out
+}
+
+// -------------------------------------------------------------- entries
+
+// A plugin that is a service, a panel and a bar widget at once can be
+// recorded in either place: enabling a bar widget files it under
+// bar.layout.<section>, while non-bar kinds live in plugins[]. Read both,
+// bar entries first, and let the first entry win -- the bar one is what
+// `omarchy bar set` edits.
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
+function findEntries(parsed, pluginId) {
+  var found = []
+  var layout = parsed && parsed.bar ? parsed.bar.layout : null
+  if (isPlainObject(layout)) {
+    for (var section in layout) {
+      var items = layout[section]
+      if (!Array.isArray(items)) continue
+      for (var i = 0; i < items.length; i++) {
+        if (items[i] && items[i].id === pluginId) found.push(items[i])
+      }
+    }
+  }
+  var entries = parsed && Array.isArray(parsed.plugins) ? parsed.plugins : []
+  for (var j = 0; j < entries.length; j++) {
+    if (entries[j] && entries[j].id === pluginId) found.push(entries[j])
+  }
+  return found
+}
+
+// Written to every entry, not just the winning one: reads let the bar entry
+// shadow the plugins[] one, so a stale value left on the loser would
+// resurface the moment the widget is removed from the bar.
+function writeEntry(config, pluginId, key, value) {
+  var entries = findEntries(config, pluginId)
+  if (entries.length === 0) {
+    if (!Array.isArray(config.plugins)) config.plugins = []
+    var created = { id: pluginId }
+    created[key] = value
+    config.plugins.push(created)
+    return
+  }
+  for (var i = 0; i < entries.length; i++) entries[i][key] = value
+}
+
+// Deletes settings keys only: an entry may carry loader-owned keys (its id,
+// bar placement options), which a reset must not touch.
+function resetEntries(config, pluginId) {
+  var entries = findEntries(config, pluginId)
+  for (var i = 0; i < entries.length; i++) {
+    var entry = entries[i]
+    for (var key in DEFAULTS) delete entry[key]
+    for (var j = 0; j < LEGACY_KEYS.length; j++) delete entry[LEGACY_KEYS[j]]
+  }
 }
 
 // ---------------------------------------------------------------- kinds
@@ -227,9 +293,11 @@ if (typeof module !== "undefined" && module.exports) {
     BUTTONS: BUTTONS, BUTTON_LABELS: BUTTON_LABELS,
     SHAPES: SHAPES, SHAPE_OPTIONS: SHAPE_OPTIONS, KINDS: KINDS,
     TINTS: TINTS, TINT_OPTIONS: TINT_OPTIONS, DEFAULTS: DEFAULTS,
+    LEGACY_KEYS: LEGACY_KEYS,
     SIZE_MIN: SIZE_MIN, SIZE_MAX: SIZE_MAX,
     SPEED_MIN: SPEED_MIN, SPEED_MAX: SPEED_MAX,
     INTENSITY_MIN: INTENSITY_MIN, INTENSITY_MAX: INTENSITY_MAX,
+    findEntries: findEntries, writeEntry: writeEntry, resetEntries: resetEntries,
     settingsFrom: settingsFrom, shapeForKind: shapeForKind, buttonOf: buttonOf,
     isPress: isPress, isRelease: isRelease,
     hasCrosshair: hasCrosshair, crosshairRotation: crosshairRotation,
