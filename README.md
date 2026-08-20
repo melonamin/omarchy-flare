@@ -45,6 +45,19 @@ paste a `require` into `hyprland.lua`, the plugin loads its own Lua through
 `hyprctl eval` when the shell starts and again whenever Hyprland reloads.
 Remove the plugin and your compositor config is untouched.
 
+## Requirements
+
+Omarchy 4 (Quattro) or newer, running `omarchy-shell` on Hyprland.
+
+No external dependencies: everything used -- `hyprctl`, `mkfifo`, `cat`, `sh`,
+`omarchy-shell` -- ships with Omarchy. Nothing is downloaded at runtime and the
+plugin makes no network connections. (`node` is used by the test suite only.)
+
+Flare writes only to its own entry in `~/.config/omarchy/shell.json`, and only
+when you change a setting. It never edits your Hyprland config: the mouse binds
+are registered at runtime with `hyprctl eval` and disappear on the next reload
+once the plugin is gone.
+
 ## Presentation mode
 
 `SUPER + ALT + P` (also in the `SUPER + K` cheatsheet) puts a surface over

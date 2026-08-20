@@ -2,9 +2,11 @@
   "schemaVersion": 1,
   "id": "melonamin.flare",
   "name": "Flare",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "author": "melonamin",
   "description": "Animated click highlights drawn over everything, for demos and screen recordings.",
+  "homepage": "https://github.com/melonamin/omarchy-flare",
+  "license": "MIT",
   "kinds": [
     "service",
     "panel",
