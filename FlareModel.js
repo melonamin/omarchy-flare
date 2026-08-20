@@ -43,7 +43,9 @@ var DEFAULTS = {
   releases: false,
   tint: "auto",
   // Keybind that toggles presentation mode. Empty string registers nothing.
-  shortcut: "SUPER + SHIFT + P",
+  // SUPER+ALT is the roomiest modifier set in a stock Omarchy: SUPER+SHIFT
+  // already binds 26 keys, P among them (Google Photos).
+  shortcut: "SUPER + ALT + P",
   primary: "circle",
   secondary: "square",
   middle: "diamond",

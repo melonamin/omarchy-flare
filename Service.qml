@@ -184,6 +184,27 @@ Item {
 
   function togglePresenting() { setPresenting(!presenting) }
 
+  // Hyprland refuses a keybind whose key+modifier another bind already owns,
+  // and says nothing about it. Without this check a shortcut that collides
+  // just never works, with no way to tell why.
+  property bool shortcutRegistered: false
+
+  Process {
+    id: shortcutCheck
+    command: ["sh", "-c", "hyprctl binds | grep -c 'Flare: presentation mode'"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var found = parseInt(String(text).trim(), 10) > 0
+        root.shortcutRegistered = found
+        if (!found && root.settings.shortcut !== "") {
+          console.warn("flare: the shortcut '" + root.settings.shortcut
+            + "' did not register -- another bind already owns that key."
+            + " Pick a free one with the `shortcut` setting.")
+        }
+      }
+    }
+  }
+
   Process {
     id: binder
     property bool queued: false
@@ -193,6 +214,7 @@ Item {
     onExited: function(code) {
       root.bindsInstalled = (code === 0)
       if (code !== 0) console.warn("flare: hyprctl eval failed with", code)
+      else if (!shortcutCheck.running) shortcutCheck.running = true
       if (queued) {
         queued = false
         var stale = queuedStale
@@ -392,6 +414,8 @@ Item {
         },
         tint: String(root.tint),
         binds: root.bindsInstalled,
+        shortcut: root.settings.shortcut,
+        shortcutRegistered: root.shortcutRegistered,
         viaFifo: root.consumed,
         viaIpc: root.viaIpc,
         counts: root.counts
