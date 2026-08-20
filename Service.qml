@@ -26,7 +26,12 @@ Item {
 
   // Master switch. Persisted as `enabled` on this plugin's shell.json entry,
   // so it survives a shell restart.
-  readonly property bool active: settings.enabled !== false
+  //
+  // Presentation mode implies it: a mode that swallows every click while
+  // drawing nothing is worse than useless. This is deliberately not a write to
+  // `enabled` -- the saved preference is left alone and simply overridden for
+  // as long as the mode is on, so exiting restores it with nothing to undo.
+  readonly property bool active: presenting || settings.enabled !== false
 
   // "auto" follows the current Omarchy theme accent, the way the macOS build
   // follows the system accent color.

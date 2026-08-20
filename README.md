@@ -59,6 +59,11 @@ warning when a chosen key collides. `SUPER+SHIFT` is nearly full in a stock
 Omarchy -- `SUPER+SHIFT+P` is Google Photos -- which is why the default sits
 on `SUPER+ALT`.
 
+Presentation mode turns highlighting on for as long as it lasts, whatever the
+master switch says -- a mode that swallows every click while drawing nothing
+would be worse than useless. Your saved setting is not rewritten; it just takes
+effect again when you exit.
+
 While presenting, *everything* is swallowed -- including the bar and Flare's
 own widget -- so `Esc` is the way back.
 
